@@ -1,5 +1,5 @@
 import requests
-from fastapi import APIRouter, Depends, Query, Body, HTTPException, status
+from fastapi import APIRouter, Depends, Query, Body, HTTPException, status, Header, Response
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Annotated, Union, Optional, List
@@ -20,88 +20,13 @@ load_dotenv()
 
 auth_router = APIRouter()
 
-# app = FastAPI()
+class Data(BaseModel):
+    name: str
+    age: int
 
-# idp = FastAPIKeycloak(
-#     server_url="http://observai-keycloak.apps.zagaopenshift.zagaopensource.com/realms/react-keycloak-login/protocol/openid-connect/auth",
-#     client_id="react-client-auth",
-#     client_secret="3adNftMWHlRTI0VQSEgbNOb7mIsKQXcH",
-#     admin_client_secret="",
-#     realm="react-keycloak-login",
-#     callback_uri="http://localhost:5173/callback"
-# )
-# idp.add_swagger_config(app)
-
-# Admin
-# @auth_router.post("/proxy", tags=["admin-cli"])
-# def proxy_admin_request(relative_path: str, method: HTTPMethod, additional_headers: dict = Body(None), payload: dict = Body(None)):
-#     return idp.proxy(
-#         additional_headers=additional_headers,
-#         relative_path=relative_path,
-#         method=method,
-#         payload=payload
-#     )
-
-# @auth_router.get("/identity-providers", tags=["admin-cli"])
-# def get_identity_providers():
-#     return idp.get_identity_providers()
-
-
-# @auth_router.get("/idp-configuration", tags=["admin-cli"])
-# def get_idp_config():
-#     return idp.open_id_configuration
-
-
-# User Management
-
-# @auth_router.get("/users", tags=["user-management"])
-# def get_users():
-#     return idp.get_all_users()
-
-
-# @auth_router.get("/user", tags=["user-management"])
-# def get_user_by_query(query: str = None):
-#     return idp.get_user(query=query)
-
-
-# @auth_router.post("/users", tags=["user-management"])
-# def create_user(first_name: str, last_name: str, email: str, password: SecretStr, id: str = None):
-#     return idp.create_user(first_name=first_name, last_name=last_name, username=email, email=email, password=password.get_secret_value(), id=id)
-
-
-# @auth_router.get("/user/{user_id}", tags=["user-management"])
-# def get_user(user_id: str = None):
-#     return idp.get_user(user_id=user_id)
-
-# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-# print(OAuth2PasswordBearer)
-# print(oauth2_scheme, "OAUTH")
-
-# class User(BaseModel):
-#     username: str
-#     email: Union[str, None] = None
-#     full_name: Union[str, None] = None
-#     disabled: Union[bool, None] = None
-
-# def fake_decode_token(token):
-#     print(token, "TOKEN")
-#     return User(
-#         username=token + "fakedecoded", email="john@example.com", full_name="John Doe"
-#     )
-
-# async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
-#     user = fake_decode_token(token)
-#     print(user, "FAKE TOKEN")
-#     return user
-
-# @auth_router.get("/users/me")
-# async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
-#     print(current_user, "RESPONSE")
-#     return current_user
-
-# @auth_router.get("/auth", tags=["test"])
-# async def read_root():
-#     return {"username": "alice"}
+@auth_router.post("/create")
+async def create(data: Data):
+    return {"data": data}
 
 @auth_router.get("/environmentRoutes", tags=["test"])
 async def env_var():
@@ -110,7 +35,7 @@ async def env_var():
         "realm": setting.KEYCLOAK_URL
     }
 
-@auth_router.post("/post", tags=["auth"])
+@auth_router.post("/post", tags=["test-auth"])
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     print(user, "USER CRED")
@@ -122,30 +47,18 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     return {"access_token": access_token, "token_type": "bearer"}
     print(user, "USER CRED")
 
-# @auth_router.post("/auth/login", status_code=200, tags=["auth"])
-# async def login_auth(
-#     url: str = conf.keycloak_url,
-#     grant_type: str = "password",
-#     username: str = None,
-#     password: str = None
-# ):
-#     # result_set = {
-#     #     "url": url,
-#     #     "grant_type": grant_type,
-#     #     "username": username,
-#     #     "password": password
-#     # }
-#     # return JSONResponse(content=result_set)
-#     return username
-
+access_token = None
+refresh_token = None
 @auth_router.post("/auth/login", status_code=status.HTTP_200_OK, tags=["auth"])
 async def login_auth(username: str = None, password: str = None):
+    global refresh_token
     if username is None or password is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username and password are required.")
 
     token_url = conf.keycloak_url + "/token"
     payload = {
         "grant_type": "password",
+        # "scope": "openid",
         "client_id": conf.keycloak_clientID,
         "client_secret": conf.keycloak_clientAuth,
         "username": username,
@@ -154,12 +67,144 @@ async def login_auth(username: str = None, password: str = None):
 
     try:
         response = requests.post(token_url, data=payload)
+        print(response.json(), "RESPONSE KEYCLOAK")
         response.raise_for_status()
+        print(response.raise_for_status, "LOGIN RAISE")
         token_data = response.json()
+        print(token_data)
+        refresh_token = token_data.get("refresh_token")  
+        access_token = token_data.get("access_token")
+        print(token_data.get("refresh_token"), "PRINT TOKEN")
         return token_data
     except requests.RequestException as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You are Unauthorized.")
+        # raise e
 
-@auth_router.get("/users/me")
+@auth_router.get("/users/me", tags=["test"])
 async def read_users_me(current_user: dict = Depends(get_current_user)):
     return current_user
+
+# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+# print(oauth2_scheme.model, "LOGIN TOKEN")
+
+# @auth_router.post("/logout", tags=["auth"])
+# async def logout(refresh_token: str = Depends(oauth2_scheme)):
+#     # Revoke the tokens associated with the refresh token
+    
+#     # revoked = revoke_tokens(refresh_token, data=payload)
+#     revoked = revoke_tokens(refresh_token)
+
+#     payload = {
+#         "client_id": conf.keycloak_clientID,
+#         "client_secret": conf.keycloak_clientAuth,
+#         "refresh_token": revoked
+#     }
+#     print(revoke_tokens, "TOKEN")
+#     print(revoked, "LOGOUT------------REVOKE")
+#     if revoked:
+#         return {"message": "Logout successful"}
+#     else:
+#         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to logout")
+
+# # Assume revoke_tokens function is implemented to revoke tokens
+# def revoke_tokens(refresh_token: str) -> bool:
+#     # Send a request to Keycloak to revoke the refresh token
+#     print(refresh_token, "REFRESH")
+#     revoke_url = conf.keycloak_url + "/logout"
+#     headers = {"Authorization": "Bearer " + refresh_token, "Content-Type": "application/x-www-form-urlencoded"}
+#     payload = {
+#         "client_id": conf.keycloak_clientID,
+#         "client_secret": conf.keycloak_clientAuth,
+#         "refresh_token": revoked
+#     }
+#     try:
+#         response = requests.get(revoke_url, headers=headers, data=payload)
+#         print(response.json(), "LOGOUT")
+#         response.raise_for_status()
+#         return True
+#     except requests.RequestException as e:
+#         # Handle error
+#         print(e)
+#         return False
+
+print(OAuth2PasswordBearer, "BEARER TOKEN")
+# @auth_router.post("/auth/logout", status_code=status.HTTP_200_OK, tags=["auth"])
+# async def logout_auth():
+#     global refresh_token
+#     global access_token
+#     print(refresh_token, "REFRESH TOKEN LOGOUT")
+
+#     if refresh_token is None:
+#         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Refresh token is required for logout.")
+
+#     logout_url = conf.keycloak_url + "/logout"
+#     headers = {
+#         "Authorization": f"Bearer {access_token}",
+#         "Content-Type": "application/x-www-form-urlencoded"
+#     }
+#     payload = {
+#         "client-id": conf.keycloak_clientID,
+#         "client-secret": conf.keycloak_clientAuth,
+#         "refresh_token": refresh_token
+#     }
+
+#     try:
+#         response = requests.post(logout_url, headers=headers, data=payload)
+#         response.raise_for_status()
+#         print(response.raise_for_status, "LOGOUT RAISE")
+#         return {"message": "Logged out successfully"}
+#     except requests.RequestException as e:
+#         raise e
+        # raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to logout.")
+
+def logout():
+    global refresh_token
+    try:
+        headers = {
+            # "Authorization" : f"Bearer {access_token}",
+            # "Authorization" : "Bearer",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        payload = {
+            "client-id": conf.keycloak_clientID,
+            "client-secret": conf.keycloak_clientAuth,
+            "refresh_token": refresh_token
+        }
+
+        logout_url = conf.keycloak_url + "/logout"
+        response = requests.post(logout_url, headers=headers, data=payload)
+        response.raise_for_status()
+        print(logout_url)
+        print("Logged out successfully")
+
+    except requests.RequestException as e:
+        print("Failed to logout:", e)
+        raise
+
+@auth_router.post("/auth/logout", status_code=status.HTTP_200_OK, tags=["auth"])
+async def logout_auth(response: Response):
+    # global access_token
+    # global refresh_token
+    # headers = {
+    #         "Authorization" : f"Bearer {access_token}",
+    #         # "Authorization" : "Bearer",
+    #         "Content-Type": "application/x-www-form-urlencoded"
+    #     }
+    print(refresh_token, "REFRESH TOKEN LOGOUT")
+
+    if refresh_token is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, 
+        # headers=headers, 
+        detail="Refresh token is required for logout.")
+
+    logout()
+    print(refresh_token, "LOGOUT RESPO")
+    return {"message": "Logged out successfully"}
+
+@auth_router.get("/headers")
+def get_headers():
+    content = {"message": "Hello World"}
+    headers = {"X-Cat-Dog": "alone in the world", "Content-Language": "en-US"}
+    return JSONResponse(content=content, headers=headers)
+
