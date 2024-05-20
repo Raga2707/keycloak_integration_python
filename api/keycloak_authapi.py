@@ -163,17 +163,20 @@ def logout():
         headers = {
             # "Authorization" : f"Bearer {access_token}",
             # "Authorization" : "Bearer",
-            "Content-Type": "application/x-www-form-urlencoded"
+            # "Content-Type": "application/x-www-form-urlencoded"
+            "Access-Control-Allow-Headers": "*"
         }
 
         payload = {
-            "client-id": conf.keycloak_clientID,
-            "client-secret": conf.keycloak_clientAuth,
+            "client_id": conf.keycloak_clientID,
+            "client_secret": conf.keycloak_clientAuth,
             "refresh_token": refresh_token
         }
 
         logout_url = conf.keycloak_url + "/logout"
-        response = requests.post(logout_url, headers=headers, data=payload)
+        response = requests.post(logout_url, 
+        # headers={"WWW-Authenticate": "Bearer"}, 
+        data=payload)
         response.raise_for_status()
         print(logout_url)
         print("Logged out successfully")
@@ -182,7 +185,20 @@ def logout():
         print("Failed to logout:", e)
         raise
 
-@auth_router.post("/auth/logout", status_code=status.HTTP_200_OK, tags=["auth"])
+# def logout(refresh_token):
+#     try:
+#         payload = {
+#             "client_id": conf.keycloak_clientID,
+#             "client_secret": conf.keycloak_clientAuth,
+#             "refresh_token": refresh_token
+#         }
+
+#         logout_auth(payload)
+#     except Exception as e:
+#         print(e)
+#         raise e
+
+@auth_router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
 async def logout_auth(response: Response):
     # global access_token
     # global refresh_token
@@ -201,6 +217,25 @@ async def logout_auth(response: Response):
     logout()
     print(refresh_token, "LOGOUT RESPO")
     return {"message": "Logged out successfully"}
+
+# @auth_router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT, tags=["auth"])
+# async def logout_auth(payload):
+#     headers = {
+#         "Authorization" : f"Bearer {access_token}",
+#         # "Authorization" : "Bearer",
+#         "Content-Type": "application/x-www-form-urlencoded"
+#     }
+#     logout_url = conf.keycloak_url + "/logout"
+
+#     response = requests.post(logout_url, data=payload, headers=headers)
+
+#     if response.status_code == 204:
+#         print("Logout Successful")
+#         return {"message": "Logged Out Successfully"}
+#     else:
+#         print("Logout failed")
+#         return {"message": "Logout failed"}
+# logout(refresh_token)
 
 @auth_router.get("/headers")
 def get_headers():
